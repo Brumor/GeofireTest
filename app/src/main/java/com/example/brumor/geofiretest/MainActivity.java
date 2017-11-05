@@ -32,23 +32,30 @@ public class MainActivity extends AppCompatActivity {
 
     public final int[] id = {0};
 
+    private DatabaseReference databaseReference;
+
     Button sendButton;
 
     EditText messageEditText;
 
     String message;
 
+    /*
+    * Note Pour plus tard : Il y a des bugs du a l'emulateur !
+    * */
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        databaseReference = FirebaseDatabase.getInstance().getReference();
+
         id[0] = 0;
 
         sendButton = findViewById(R.id.send_message);
 
         messageEditText = findViewById(R.id.message_text);
-
-        final DatabaseReference databaseReference = FirebaseDatabase.getInstance().getReference("test/geomessage/");
 
         sendButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -56,12 +63,16 @@ public class MainActivity extends AppCompatActivity {
 
                 message = messageEditText.getText().toString();
 
+                String dbKey =databaseReference.push().getKey();
+
                 Log.e(TAG, "Test 1");
                 GeoMessage currentGeomessage = new GeoMessage(id[0], message);
 
                 Log.e(TAG, "Test 2");
 
-                databaseReference.child("children").push().setValue(currentGeomessage).addOnSuccessListener(new OnSuccessListener<Void>() {
+                databaseReference.child("test").child("geomessage")
+                        .child("children").child(dbKey).setValue(currentGeomessage)
+                        .addOnSuccessListener(new OnSuccessListener<Void>() {
                     @Override
                     public void onSuccess(Void aVoid) {
                         Log.e(TAG, "Success !");
@@ -82,8 +93,28 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        DatabaseReference connectedRef = FirebaseDatabase.getInstance().getReference(".info/connected");
+        connectedRef.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                boolean connected = dataSnapshot.getValue(Boolean.class);
+                if (connected) {
+                    Log.e(TAG, "Connected");
+                } else {
+                    Log.e(TAG, "Not connected");
+                }
+            }
 
-        databaseReference.child("children").addChildEventListener(new ChildEventListener() {
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+
+                Log.e(TAG, "Listener was cancelled");
+
+            }
+        });
+
+
+        databaseReference.child("test").child("geomessage").child("children").addChildEventListener(new ChildEventListener() {
             @Override
             public void onChildAdded(DataSnapshot dataSnapshot, String s) {
                 Log.e("101", "Child Added !");
