@@ -7,30 +7,26 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.Toast;
+import android.widget.ListView;
 
 import com.firebase.geofire.GeoFire;
 import com.firebase.geofire.GeoLocation;
-import com.firebase.geofire.GeoQuery;
-import com.firebase.ui.auth.AuthUI;
+import com.firebase.geofire.GeoQueryEventListener;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.database.ChildEventListener;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
+import java.util.ArrayList;
+
 public class MainActivity extends AppCompatActivity {
 
     public final static String TAG = "Main Activity";
-
-    public final int[] id = {0};
 
     private DatabaseReference databaseReference;
 
@@ -39,6 +35,14 @@ public class MainActivity extends AppCompatActivity {
     EditText messageEditText;
 
     String message;
+
+    GeoFire geoFire;
+
+    ArrayList<GeoMessage> geoMessagesArrayList;
+
+    ListView geoMessagesListView;
+
+    GeomessagesListAdapter geoMessagesListAdapter;
 
     /*
     * Note Pour plus tard : Il y a des bugs du a l'emulateur !
@@ -49,13 +53,20 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        databaseReference = FirebaseDatabase.getInstance().getReference();
-
-        id[0] = 0;
-
         sendButton = findViewById(R.id.send_message);
 
         messageEditText = findViewById(R.id.message_text);
+
+        geoMessagesListView = findViewById(R.id.geomessage_listview);
+        geoMessagesArrayList = new ArrayList<>();
+        geoMessagesListAdapter = new GeomessagesListAdapter(this, 3, geoMessagesArrayList);
+        geoMessagesListView.setAdapter(geoMessagesListAdapter);
+
+        databaseReference = FirebaseDatabase.getInstance().getReference();
+
+        geoFire = new GeoFire(databaseReference.child("test").child("geomessage").child("geofire"));
+
+
 
         sendButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -63,112 +74,74 @@ public class MainActivity extends AppCompatActivity {
 
                 message = messageEditText.getText().toString();
 
-                String dbKey =databaseReference.push().getKey();
+                String dbKey = databaseReference.push().getKey();
 
-                Log.e(TAG, "Test 1");
-                GeoMessage currentGeomessage = new GeoMessage(id[0], message);
-
-                Log.e(TAG, "Test 2");
+                GeoMessage currentGeomessage = new GeoMessage(message);
 
                 databaseReference.child("test").child("geomessage")
-                        .child("children").child(dbKey).setValue(currentGeomessage)
-                        .addOnSuccessListener(new OnSuccessListener<Void>() {
-                    @Override
-                    public void onSuccess(Void aVoid) {
-                        Log.e(TAG, "Success !");
-                    }
-                }).addOnFailureListener(new OnFailureListener() {
-                    @Override
-                    public void onFailure(@NonNull Exception e) {
-                        Log.e(TAG, "FAIL");
-                    }
-                }).addOnCompleteListener(new OnCompleteListener<Void>() {
-                    @Override
-                    public void onComplete(@NonNull Task<Void> task) {
-                        Log.e(TAG, "Complete");
-                    }
-                });
+                        .child("children").child(dbKey).setValue(currentGeomessage);
 
-                Log.e(TAG, "Test 3");
+                //register the location in a separate branch of the database called geofire
+                geoFire.setLocation(dbKey, new GeoLocation(1, 5));
+
             }
         });
 
+
+        //Verify if the Firebase database is connected
         DatabaseReference connectedRef = FirebaseDatabase.getInstance().getReference(".info/connected");
         connectedRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
                 boolean connected = dataSnapshot.getValue(Boolean.class);
-                if (connected) {
-                    Log.e(TAG, "Connected");
-                } else {
-                    Log.e(TAG, "Not connected");
-                }
+                if (connected) {Log.e(TAG, "Connected");}
+                else {Log.e(TAG, "Not connected");}
             }
-
             @Override
-            public void onCancelled(DatabaseError databaseError) {
-
-                Log.e(TAG, "Listener was cancelled");
-
-            }
+            public void onCancelled(DatabaseError databaseError) {Log.e(TAG, "Listener was cancelled");}
         });
 
 
-        databaseReference.child("test").child("geomessage").child("children").addChildEventListener(new ChildEventListener() {
+        geoFire.queryAtLocation(new GeoLocation(0.4, 0.5), 500).addGeoQueryEventListener(new GeoQueryEventListener() {
+
             @Override
-            public void onChildAdded(DataSnapshot dataSnapshot, String s) {
-                Log.e("101", "Child Added !");
-                id[0] = (int) dataSnapshot.getChildrenCount();
+            public void onKeyEntered(String key, GeoLocation location) {
+
+                Log.e(TAG, "Key entered :" + key);
+
+
+                databaseReference.child("test").child("geomessage")
+                        .child("children").child(key)
+                        .addValueEventListener(new ValueEventListener() {
+
+                    @Override
+                    public void onDataChange(DataSnapshot dataSnapshot) {
+
+                        geoMessagesListAdapter.add(dataSnapshot.getValue(GeoMessage.class));
+
+                    }
+
+                    @Override
+                    public void onCancelled(DatabaseError databaseError) {}
+
+                });
+
             }
 
             @Override
-            public void onChildChanged(DataSnapshot dataSnapshot, String s) {
-                Log.e("101", "Child CHanged !");
-                id[0] = (int) dataSnapshot.getChildrenCount();
-
-            }
+            public void onKeyExited(String key) {}
 
             @Override
-            public void onChildRemoved(DataSnapshot dataSnapshot) {
-
-            }
+            public void onKeyMoved(String key, GeoLocation location) {}
 
             @Override
-            public void onChildMoved(DataSnapshot dataSnapshot, String s) {
-
-            }
+            public void onGeoQueryReady() {}
 
             @Override
-            public void onCancelled(DatabaseError databaseError) {
+            public void onGeoQueryError(DatabaseError error) {}
 
-            }
         });
 
-
-    }
-
-
-    private static class GeoMessage {
-
-        int id;
-        String content;
-
-        public GeoMessage() {};
-
-        public GeoMessage(int id, String content) {
-
-            this.id = id;
-            this.content = content;
-
-        }
-
-        public String getContent() {
-            return content;
-        }
-
-        public void setContent(String content) {
-            this.content = content;
-        }
     }
 
 }
